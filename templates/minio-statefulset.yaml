@@ -1,0 +1,141 @@
+{{- if .Values.minio.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "minio-aistor.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio-aistor.minio.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceName: {{ include "minio-aistor.fullname" . }}-minio
+  replicas: {{ .Values.minio.replicaCount }}
+  {{- if .Values.minio.updateStrategy }}
+  updateStrategy:
+    {{- toYaml .Values.minio.updateStrategy | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "minio-aistor.minio.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "minio-aistor.minio.selectorLabels" . | nindent 8 }}
+      {{- with .Values.minio.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.minio.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: minio
+          image: {{ include "minio-aistor.minio.image" . }}
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          {{- with .Values.minio.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - minio
+            - server
+            - /mnt/data
+            {{- if .Values.minio.license.enabled }}
+            - --license
+            - /minio.license
+            {{- end }}
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "minio-aistor.secretName" . }}
+                  key: {{ .Values.minio.auth.existingSecretUserKey }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "minio-aistor.secretName" . }}
+                  key: {{ .Values.minio.auth.existingSecretPasswordKey }}
+            {{- if .Values.minio.browserRedirectUrl }}
+            - name: MINIO_BROWSER_REDIRECT_URL
+              value: {{ .Values.minio.browserRedirectUrl | quote }}
+            {{- end }}
+          ports:
+            - name: api
+              containerPort: 9000
+              protocol: TCP
+            - name: console
+              containerPort: 9001
+              protocol: TCP
+          {{- if .Values.minio.livenessProbe.enabled }}
+          livenessProbe:
+            {{- omit .Values.minio.livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.minio.readinessProbe.enabled }}
+          readinessProbe:
+            {{- omit .Values.minio.readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.minio.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /mnt/data
+            {{- if .Values.minio.license.enabled }}
+            - name: license
+              mountPath: /minio.license
+              subPath: {{ .Values.minio.license.existingSecretKey }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if .Values.minio.license.enabled }}
+        - name: license
+          secret:
+            secretName: {{ include "minio-aistor.licenseSecretName" . }}
+        {{- end }}
+        {{- if not .Values.minio.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.minio.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.minio.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.minio.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.minio.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        {{- with .Values.minio.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          {{- range .Values.minio.persistence.accessModes }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- if (include "minio-aistor.storageClass" .) }}
+        storageClassName: {{ include "minio-aistor.storageClass" . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.persistence.size | quote }}
+  {{- end }}
+{{- end }}

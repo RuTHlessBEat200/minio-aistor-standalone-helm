@@ -1,0 +1,180 @@
+# Default values for minio-aistor
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  # Global image registry override
+  imageRegistry: ""
+  # Global image tag override
+  imageTag: ""
+  # Global image pull secrets
+  imagePullSecrets: []
+  # Global storage class
+  storageClass: ""
+
+# Chart name overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# Common labels to add to all resources
+commonLabels: {}
+
+# Common annotations to add to all resources
+commonAnnotations: {}
+
+# MinIO configuration
+minio:
+  enabled: true
+  image:
+    registry: "quay.io"
+    repository: minio/aistor/minio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  # MinIO credentials
+  auth:
+    rootUser: "admin"
+    rootPassword: ""
+    existingSecret: ""
+    existingSecretUserKey: "root-user"
+    existingSecretPasswordKey: "root-password"
+  
+  # Browser redirect URL (for accessing console through ingress)
+  browserRedirectUrl: ""
+  
+  # License configuration
+  license:
+    # You need a license, you can get a free one at https://min.io/pricing
+    enabled: true
+    # License content (if not using existingSecret)
+    content: ""
+    # Name of existing secret containing the license
+    existingSecret: ""
+    # Key in the secret containing the license
+    existingSecretKey: "minio.license"
+  
+  # StatefulSet configuration
+  replicaCount: 1
+  updateStrategy:
+    type: RollingUpdate
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 3000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  # Persistence configuration
+  persistence:
+    enabled: true
+    storageClass: ""  # Uses global.storageClass if empty
+    accessModes:
+      - ReadWriteOnce
+    size: 50Gi
+    annotations: {}
+  
+  # Probes configuration
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /minio/health/live
+      port: api
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /minio/health/ready
+      port: api
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    # API port (S3 API)
+    apiPort: 9000
+    # Console port (Web UI)
+    consolePort: 9001
+    # NodePort settings (only used if service.type is NodePort)
+    nodePort:
+      apiPort: 30008
+      consolePort: 30009
+  
+  # Pod annotations
+  podAnnotations: {}
+  
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  
+  # Container security context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: s3.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: minio-api
+            port: 9000
+    - host: s3-console.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: minio-console
+            port: 9001
+  tls: []
+    # - secretName: minio-tls
+    #   hosts:
+    #     - s3.example.com
+    #     - s3-console.example.com
+
+# Autoscaling (HPA) - typically disabled for stateful storage
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80

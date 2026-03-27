@@ -1,0 +1,18 @@
+# Helm package files
+*.tgz
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Values files with secrets
+secrets-*.yaml
+values-dev.yaml
+

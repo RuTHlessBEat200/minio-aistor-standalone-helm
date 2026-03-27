@@ -1,0 +1,16 @@
+apiVersion: v2
+name: minio-aistor-standalone
+description: A Helm chart for MinIO AIStor - Standalone Object Storage
+type: application
+version: 1.0.0
+appVersion: "latest"
+keywords:
+  - minio
+  - aistor
+  - object-storage
+  - s3
+home: https://min.io
+sources:
+  - https://quay.io/minio/aistor/minio
+maintainers:
+  - name: RuTHlessBEat200

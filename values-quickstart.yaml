@@ -1,0 +1,30 @@
+# Development environment values for MinIO AIStor
+
+fullnameOverride: "minio-dev"
+
+minio:
+  auth:
+    rootUser: "admin"
+    rootPassword: "devpassword123"
+
+  browserRedirectUrl: "http://localhost:9001"
+  
+  license:
+    content: "License here"
+ 
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+ingress:
+  enabled: false

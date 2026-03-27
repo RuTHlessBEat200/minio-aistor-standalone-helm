@@ -1,0 +1,76 @@
+MinIO AIStor has been deployed!
+
+1. Get the application URLs:
+
+{{- if .Values.ingress.enabled }}
+  Visit the following URLs:
+  {{- range .Values.ingress.hosts }}
+    {{- $host := .host }}
+    {{- range .paths }}
+    {{- if eq .service.name "minio-api" }}
+  S3 API: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host }}{{ .path }}
+    {{- else if eq .service.name "minio-console" }}
+  Console: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host }}{{ .path }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+{{- else if contains "NodePort" .Values.minio.service.type }}
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  export NODE_PORT_API=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "minio-aistor.fullname" . }}-minio-api)
+  export NODE_PORT_CONSOLE=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "minio-aistor.fullname" . }}-minio-console)
+  
+  S3 API: http://$NODE_IP:$NODE_PORT_API
+  Console: http://$NODE_IP:$NODE_PORT_CONSOLE
+{{- else if contains "LoadBalancer" .Values.minio.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+  
+  export SERVICE_IP_API=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "minio-aistor.fullname" . }}-minio-api --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  export SERVICE_IP_CONSOLE=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "minio-aistor.fullname" . }}-minio-console --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  
+  S3 API: http://$SERVICE_IP_API:{{ .Values.minio.service.apiPort }}
+  Console: http://$SERVICE_IP_CONSOLE:{{ .Values.minio.service.consolePort }}
+{{- else if contains "ClusterIP" .Values.minio.service.type }}
+  # Port forward to access the services:
+  
+  # S3 API
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "minio-aistor.fullname" . }}-minio-api {{ .Values.minio.service.apiPort }}:{{ .Values.minio.service.apiPort }}
+  
+  # Console
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "minio-aistor.fullname" . }}-minio-console {{ .Values.minio.service.consolePort }}:{{ .Values.minio.service.consolePort }}
+  
+  Then visit:
+  S3 API: http://127.0.0.1:{{ .Values.minio.service.apiPort }}
+  Console: http://127.0.0.1:{{ .Values.minio.service.consolePort }}
+{{- end }}
+
+2. Get your MinIO credentials:
+
+  Root User:
+  kubectl get secret --namespace {{ .Release.Namespace }} {{ include "minio-aistor.secretName" . }} -o jsonpath="{.data.root-user}" | base64 -d
+  
+  Root Password:
+  kubectl get secret --namespace {{ .Release.Namespace }} {{ include "minio-aistor.secretName" . }} -o jsonpath="{.data.root-password}" | base64 -d
+
+3. Configure MinIO client (mc):
+{{- if .Values.ingress.enabled }}
+  {{- range .Values.ingress.hosts }}
+    {{- $host := .host }}
+    {{- range .paths }}
+      {{- if eq .service.name "minio-api" }}
+  
+  mc alias set {{ include "minio-aistor.fullname" $ }} http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host }} $(kubectl get secret --namespace {{ $.Release.Namespace }} {{ include "minio-aistor.secretName" $ }} -o jsonpath="{.data.root-user}" | base64 -d) $(kubectl get secret --namespace {{ $.Release.Namespace }} {{ include "minio-aistor.secretName" $ }} -o jsonpath="{.data.root-password}" | base64 -d)
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- else }}
+
+  mc alias set {{ include "minio-aistor.fullname" . }} http://localhost:{{ .Values.minio.service.apiPort }} $(kubectl get secret --namespace {{ .Release.Namespace }} {{ include "minio-aistor.secretName" . }} -o jsonpath="{.data.root-user}" | base64 -d) $(kubectl get secret --namespace {{ .Release.Namespace }} {{ include "minio-aistor.secretName" . }} -o jsonpath="{.data.root-password}" | base64 -d)
+{{- end }}
+
+{{- if .Values.minio.license.enabled }}
+
+4. License is configured and mounted.
+{{- else }}
+
+4. To add a license later, create a secret with your license file and update the values.yaml.
+{{- end }}

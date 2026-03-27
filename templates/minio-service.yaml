@@ -1,0 +1,49 @@
+{{- if .Values.minio.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "minio-aistor.fullname" . }}-minio-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio-aistor.minio.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.minio.service.type }}
+  ports:
+    - name: api
+      port: {{ .Values.minio.service.apiPort }}
+      targetPort: api
+      protocol: TCP
+      {{- if and (eq .Values.minio.service.type "NodePort") .Values.minio.service.nodePort.apiPort }}
+      nodePort: {{ .Values.minio.service.nodePort.apiPort }}
+      {{- end }}
+  selector:
+    {{- include "minio-aistor.minio.selectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "minio-aistor.fullname" . }}-minio-console
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio-aistor.minio.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.minio.service.type }}
+  ports:
+    - name: console
+      port: {{ .Values.minio.service.consolePort }}
+      targetPort: console
+      protocol: TCP
+      {{- if and (eq .Values.minio.service.type "NodePort") .Values.minio.service.nodePort.consolePort }}
+      nodePort: {{ .Values.minio.service.nodePort.consolePort }}
+      {{- end }}
+  selector:
+    {{- include "minio-aistor.minio.selectorLabels" . | nindent 4 }}
+{{- end }}

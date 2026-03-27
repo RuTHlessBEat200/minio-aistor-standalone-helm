@@ -1,0 +1,58 @@
+# Production environment values for MinIO AIStor
+
+fullnameOverride: "minio-prod"
+
+minio:
+  auth:
+    # Use existing secret in production
+    existingSecret: "minio-credentials"
+    existingSecretUserKey: "root-user"
+    existingSecretPasswordKey: "root-password"
+  
+  browserRedirectUrl: "https://s3.example.com"
+  
+  license:
+    existingSecret: "minio-license"
+    existingSecretKey: "minio.license"
+
+  persistence:
+    enabled: true
+    size: 500Gi
+    storageClass: "fast-ssd"
+  
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    - host: s3.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: minio-api
+            port: 9000
+    - host: s3-console.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: minio-console
+            port: 9001
+  tls:
+    - secretName: minio-tls
+      hosts:
+        - s3.example.com
+        - s3-console.example.com
