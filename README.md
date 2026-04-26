@@ -11,6 +11,8 @@ This Helm chart deploys MinIO AIStor in standalone mode on Kubernetes.
 - License management
 - Security best practices with Pod Security Context
 - Health checks (liveness and readiness probes)
+- **User/access key provisioning** with policy attachment and custom inline policies
+- **Bucket provisioning** with versioning, object locking, anonymous access, encryption, quota, lifecycle rules and tags
 
 ## Prerequisites
 
@@ -178,6 +180,125 @@ minio:
 | `ingress.className` | Ingress class name | `""` |
 | `ingress.hosts` | Ingress hosts configuration | See values.yaml |
 | `ingress.tls` | Ingress TLS configuration | `[]` |
+
+### User Provisioning
+
+Users are created via a `post-install,post-upgrade` Helm hook Job after MinIO starts.
+
+| Parameter | Description |
+|-----------|-------------|
+| `users[].accessKey` | Access key (username) |
+| `users[].secretKey` | Secret key (password) |
+| `users[].existingSecret` | Existing secret containing credentials |
+| `users[].existingSecretAccessKeyKey` | Key in secret for access key (default: `access-key`) |
+| `users[].existingSecretSecretKeyKey` | Key in secret for secret key (default: `secret-key`) |
+| `users[].policies` | List of built-in or custom policies to attach |
+| `users[].customPolicyName` | Name for an inline custom policy |
+| `users[].customPolicy` | Inline JSON IAM policy |
+
+Built-in MinIO policies: `readwrite`, `readonly`, `writeonly`, `diagnostics`, `consoleAdmin`
+
+```yaml
+users:
+  # Basic user with built-in policy
+  - accessKey: "myuser"
+    secretKey: "mypassword"
+    policies:
+      - "readwrite"
+
+  # User with credentials from existing secret
+  - existingSecret: "my-user-secret"
+    existingSecretAccessKeyKey: "access-key"
+    existingSecretSecretKeyKey: "secret-key"
+    policies:
+      - "readonly"
+
+  # User with custom inline policy
+  - accessKey: "s3tables"
+    secretKey: "mypassword"
+    customPolicyName: "s3tables-policy"
+    customPolicy: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": ["s3:*"],
+            "Resource": [
+              "arn:aws:s3:::tables/*",
+              "arn:aws:s3:::tables"
+            ]
+          }
+        ]
+      }
+```
+
+### Bucket Provisioning
+
+Buckets are created via the same provisioning Job.
+
+| Parameter | Description |
+|-----------|-------------|
+| `buckets[].name` | Bucket name |
+| `buckets[].type` | `basic` \| `versioned` \| `locked` |
+| `buckets[].versioning.excludeFolders` | Exclude folders from versioning |
+| `buckets[].versioning.excludedPrefixes` | List of prefix regex patterns to exclude from versioning |
+| `buckets[].locking.mode` | Object lock mode: `compliance` \| `governance` |
+| `buckets[].locking.validity` | Retention period value |
+| `buckets[].locking.unit` | Retention period unit: `d` (days) \| `y` (years) |
+| `buckets[].anonymous.enabled` | Enable anonymous access |
+| `buckets[].anonymous.policy` | `download` \| `upload` \| `public` \| `none` |
+| `buckets[].encryption.enabled` | Enable SSE-S3 encryption (requires KMS) |
+| `buckets[].quota.enabled` | Enable storage quota |
+| `buckets[].quota.size` | Quota size e.g. `10GiB` |
+| `buckets[].lifecycle` | List of lifecycle rules |
+| `buckets[].tags` | Map of key/value tags |
+
+```yaml
+buckets:
+  # Basic bucket with quota and lifecycle
+  - name: "mybucket"
+    type: basic
+    quota:
+      enabled: true
+      size: "50GiB"
+    lifecycle:
+      - id: "expire-tmp"
+        prefix: "tmp/"
+        expiry:
+          days: 7
+        noncurrentVersionExpiry:
+          days: 3
+    tags:
+      env: production
+      team: data
+
+  # Versioned bucket excluding certain prefixes
+  - name: "versioned-bucket"
+    type: versioned
+    versioning:
+      excludeFolders: false
+      excludedPrefixes:
+        - "tmp/*"
+        - "cache/*"
+
+  # Locked bucket with compliance retention
+  - name: "compliance-bucket"
+    type: locked
+    locking:
+      mode: compliance
+      validity: 365
+      unit: d
+
+  # Public download bucket
+  - name: "public-assets"
+    type: basic
+    anonymous:
+      enabled: true
+      policy: download
+```
+
+> **Note:** `type: locked` automatically enables versioning. SSE-S3 `encryption` requires a KMS (e.g. MinIO KES / HashiCorp Vault) to be configured — the provisioning job will warn and continue if KMS is not available.
 
 ## Accessing MinIO
 

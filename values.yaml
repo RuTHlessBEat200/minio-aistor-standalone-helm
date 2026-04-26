@@ -172,6 +172,81 @@ ingress:
     #     - s3.example.com
     #     - s3-console.example.com
 
+# Users / Access Keys provisioning
+# These are created after MinIO starts via a post-install/upgrade Job
+users: []
+  # - accessKey: "myuser"
+  #   secretKey: "mypassword"
+  #   # OR load credentials from an existing secret
+  #   existingSecret: ""
+  #   existingSecretAccessKeyKey: "access-key"
+  #   existingSecretSecretKeyKey: "secret-key"
+  #   # Built-in MinIO policies: readwrite, readonly, writeonly, diagnostics, consoleAdmin
+  #   policies:
+  #     - "readwrite"
+  #   # Optional inline policy (JSON). If set, a policy with customPolicyName is created and attached.
+  #   customPolicyName: ""
+  #   customPolicy: |
+  #     {
+  #       "Version": "2012-10-17",
+  #       "Statement": [
+  #         {
+  #           "Effect": "Allow",
+  #           "Action": ["s3:*"],
+  #           "Resource": ["arn:aws:s3:::mybucket/*"]
+  #         }
+  #       ]
+  #     }
+
+# Buckets provisioning
+# These are created after MinIO starts via a post-install/upgrade Job
+buckets: []
+  # - name: "mybucket"
+  #
+  #   # type: basic | versioned | locked
+  #   type: basic
+  #
+  #   # Versioning (applies when type: versioned)
+  #   versioning:
+  #     excludeFolders: false
+  #     excludedPrefixes: []
+  #     #  - "tmp/*"
+  #     #  - "cache/*"
+  #
+  #   # Object locking (applies when type: locked — enables versioning automatically)
+  #   locking:
+  #     mode: "compliance"   # compliance | governance
+  #     validity: 30
+  #     unit: "d"            # d (days) | y (years)
+  #
+  #   # Anonymous access
+  #   anonymous:
+  #     enabled: false
+  #     policy: "download"   # download | upload | public | none
+  #
+  #   # Server-side encryption (SSE-S3)
+  #   encryption:
+  #     enabled: false
+  #
+  #   # Storage quota
+  #   quota:
+  #     enabled: false
+  #     size: "10GiB"
+  #
+  #   # Lifecycle rules
+  #   lifecycle: []
+  #   # - id: "expire-tmp"
+  #   #   prefix: "tmp/"
+  #   #   expiry:
+  #   #     days: 7
+  #   #   noncurrentVersionExpiry:
+  #   #     days: 3
+  #
+  #   # Tags (key: value pairs)
+  #   tags: {}
+  #   #   env: production
+  #   #   team: data
+
 # Autoscaling (HPA) - typically disabled for stateful storage
 autoscaling:
   enabled: false
