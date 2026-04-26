@@ -20,7 +20,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "minio-aistor.minio.selectorLabels" . | nindent 8 }}
+        {{- include "minio-aistor.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: provisioning
     spec:
       restartPolicy: OnFailure
