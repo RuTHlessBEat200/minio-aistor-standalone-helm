@@ -1,0 +1,91 @@
+{{- if or .Values.users .Values.buckets }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "minio-aistor.fullname" . }}-provisioning
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio-aistor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioning
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "minio-aistor.minio.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: provisioning
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: provisioning-script
+          configMap:
+            name: {{ include "minio-aistor.fullname" . }}-provisioning
+            defaultMode: 0755
+        - name: mc-config
+          emptyDir: {}
+        {{- range .Values.users }}
+        - name: user-creds-{{ .accessKey | default .existingSecret | lower | replace "_" "-" | replace "." "-" }}
+          secret:
+            secretName: {{ if .existingSecret }}{{ .existingSecret }}{{ else }}{{ include "minio-aistor.fullname" $ }}-user-{{ .accessKey | lower | replace "_" "-" | replace "." "-" }}{{ end }}
+        {{- end }}
+      containers:
+        - name: provisioning
+          image: quay.io/minio/mc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "/scripts/provision.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: MC_CONFIG_DIR
+              value: /tmp/mc
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "minio-aistor.secretName" . }}
+                  key: {{ .Values.minio.auth.existingSecretUserKey }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "minio-aistor.secretName" . }}
+                  key: {{ .Values.minio.auth.existingSecretPasswordKey }}
+          volumeMounts:
+            - name: provisioning-script
+              mountPath: /scripts
+            - name: mc-config
+              mountPath: /tmp/mc
+            {{- range .Values.users }}
+            - name: user-creds-{{ .accessKey | default .existingSecret | lower | replace "_" "-" | replace "." "-" }}
+              mountPath: /credentials/{{ .accessKey | default .existingSecret | lower | replace "_" "-" | replace "." "-" }}
+              readOnly: true
+            {{- end }}
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+{{- end }}

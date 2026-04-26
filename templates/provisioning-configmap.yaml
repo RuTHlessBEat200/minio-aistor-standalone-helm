@@ -1,0 +1,177 @@
+{{- if or .Values.users .Values.buckets }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "minio-aistor.fullname" . }}-provisioning
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio-aistor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioning
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  provision.sh: |
+    #!/bin/sh
+    set -e
+
+    MINIO_ALIAS="minio"
+    MINIO_ENDPOINT="http://{{ include "minio-aistor.fullname" . }}-minio-api.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.minio.service.apiPort }}"
+
+    echo ">>> Waiting for MinIO to be ready..."
+    until mc alias set "$MINIO_ALIAS" "$MINIO_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" > /dev/null 2>&1 && mc admin info "$MINIO_ALIAS" > /dev/null 2>&1; do
+      echo "    MinIO not ready yet, retrying in 5s..."
+      sleep 5
+    done
+    echo ">>> MinIO is ready."
+
+    {{- range .Values.users }}
+    # ---------- User: {{ .accessKey | default "(from secret)" }} ----------
+    echo ">>> Provisioning user: {{ .accessKey | default "(credentials from secret)" }}"
+
+    {{- if .existingSecret }}
+    _ACCESS_KEY=$(cat /credentials/{{ .accessKey | default .existingSecret }}/access-key)
+    _SECRET_KEY=$(cat /credentials/{{ .accessKey | default .existingSecret }}/secret-key)
+    {{- else }}
+    _ACCESS_KEY="{{ .accessKey }}"
+    _SECRET_KEY=$(cat /credentials/{{ .accessKey | lower | replace "_" "-" | replace "." "-" }}/secret-key)
+    {{- end }}
+
+    {{- if .customPolicyName }}
+    echo "    Creating custom policy: {{ .customPolicyName }}"
+    cat > /tmp/policy-{{ .customPolicyName }}.json << 'POLICY_EOF'
+{{ .customPolicy | indent 4 }}
+POLICY_EOF
+    mc admin policy create "$MINIO_ALIAS" "{{ .customPolicyName }}" /tmp/policy-{{ .customPolicyName }}.json || true
+    {{- end }}
+
+    if mc admin user info "$MINIO_ALIAS" "$_ACCESS_KEY" > /dev/null 2>&1; then
+      echo "    User $_ACCESS_KEY already exists, updating password..."
+      mc admin user add "$MINIO_ALIAS" "$_ACCESS_KEY" "$_SECRET_KEY"
+    else
+      echo "    Creating user $_ACCESS_KEY..."
+      mc admin user add "$MINIO_ALIAS" "$_ACCESS_KEY" "$_SECRET_KEY"
+    fi
+
+    {{- range .policies }}
+    echo "    Attaching policy: {{ . }}"
+    mc admin policy attach "$MINIO_ALIAS" "{{ . }}" --user "$_ACCESS_KEY" || true
+    {{- end }}
+    {{- if .customPolicyName }}
+    mc admin policy attach "$MINIO_ALIAS" "{{ .customPolicyName }}" --user "$_ACCESS_KEY" || true
+    {{- end }}
+
+    echo "    User $_ACCESS_KEY provisioned."
+    {{- end }}
+
+    {{- range .Values.buckets }}
+    # ---------- Bucket: {{ .name }} ----------
+    echo ">>> Provisioning bucket: {{ .name }}"
+
+    {{- if eq (.type | default "basic") "locked" }}
+    if mc ls "$MINIO_ALIAS/{{ .name }}" > /dev/null 2>&1; then
+      echo "    Bucket {{ .name }} already exists."
+    else
+      echo "    Creating locked bucket: {{ .name }}"
+      mc mb --with-lock "$MINIO_ALIAS/{{ .name }}"
+    fi
+    echo "    Enabling versioning for locked bucket..."
+    mc version enable "$MINIO_ALIAS/{{ .name }}"
+    {{- if .locking }}
+    echo "    Setting object lock: mode={{ .locking.mode }} validity={{ .locking.validity }}{{ .locking.unit }}"
+    mc retention set --default "{{ .locking.mode }}" "{{ .locking.validity }}{{ .locking.unit }}" "$MINIO_ALIAS/{{ .name }}"
+    {{- end }}
+
+    {{- else if eq (.type | default "basic") "versioned" }}
+    if mc ls "$MINIO_ALIAS/{{ .name }}" > /dev/null 2>&1; then
+      echo "    Bucket {{ .name }} already exists."
+    else
+      echo "    Creating bucket: {{ .name }}"
+      mc mb "$MINIO_ALIAS/{{ .name }}"
+    fi
+    echo "    Enabling versioning..."
+    mc version enable "$MINIO_ALIAS/{{ .name }}"
+    {{- if and .versioning .versioning.excludeFolders }}
+    echo "    Excluding folders from versioning..."
+    mc version enable --exclude-folders "$MINIO_ALIAS/{{ .name }}"
+    {{- end }}
+    {{- if and .versioning .versioning.excludedPrefixes }}
+    echo "    Setting excluded prefixes for versioning..."
+    mc version enable \
+      {{- range .versioning.excludedPrefixes }}
+      --exclude-prefix "{{ . }}" \
+      {{- end }}
+      "$MINIO_ALIAS/{{ .name }}"
+    {{- end }}
+
+    {{- else }}
+    if mc ls "$MINIO_ALIAS/{{ .name }}" > /dev/null 2>&1; then
+      echo "    Bucket {{ .name }} already exists."
+    else
+      echo "    Creating bucket: {{ .name }}"
+      mc mb "$MINIO_ALIAS/{{ .name }}"
+    fi
+    {{- end }}
+
+    {{- if and .anonymous .anonymous.enabled }}
+    echo "    Setting anonymous access policy: {{ .anonymous.policy }}"
+    mc anonymous set "{{ .anonymous.policy }}" "$MINIO_ALIAS/{{ .name }}"
+    {{- end }}
+
+    {{- if and .encryption .encryption.enabled }}
+    echo "    Enabling SSE-S3 encryption..."
+    mc encrypt set sse-s3 "$MINIO_ALIAS/{{ .name }}" || echo "    WARNING: SSE-S3 encryption requires KMS to be configured, skipping."
+    {{- end }}
+
+    {{- if and .quota .quota.enabled }}
+    echo "    Setting quota: {{ .quota.size }}"
+    mc quota set "$MINIO_ALIAS/{{ .name }}" --size "{{ .quota.size }}"
+    {{- end }}
+
+    {{- if .tags }}
+    echo "    Setting tags..."
+    mc tag set "$MINIO_ALIAS/{{ .name }}" "{{ range $k, $v := .tags }}{{ $k }}={{ $v }}&{{ end }}" || true
+    {{- end }}
+
+    {{- if .lifecycle }}
+    echo "    Applying lifecycle rules..."
+    mc ilm import "$MINIO_ALIAS/{{ .name }}" < /scripts/lifecycle-{{ .name }}.json
+    {{- end }}
+
+    echo "    Bucket {{ .name }} provisioned."
+    {{- end }}
+
+    echo ">>> Provisioning complete."
+{{- range .Values.buckets }}
+{{- if .lifecycle }}
+  lifecycle-{{ .name }}.json: |
+    {
+      "Rules": [
+        {{- range $i, $rule := .lifecycle }}
+        {{- if $i }},{{ end }}
+        {
+          "ID": {{ $rule.id | quote }},
+          "Status": "Enabled",
+          "Filter": { "Prefix": {{ $rule.prefix | default "" | quote }} }
+          {{- if $rule.expiry }},
+          "Expiration": {
+            {{- if $rule.expiry.days }}
+            "Days": {{ $rule.expiry.days }}
+            {{- else if $rule.expiry.date }}
+            "Date": {{ $rule.expiry.date | quote }}
+            {{- end }}
+          }
+          {{- end }}
+          {{- if $rule.noncurrentVersionExpiry }},
+          "NoncurrentVersionExpiration": {
+            "NoncurrentDays": {{ $rule.noncurrentVersionExpiry.days }}
+          }
+          {{- end }}
+        }
+        {{- end }}
+      ]
+    }
+{{- end }}
+{{- end }}
+{{- end }}
