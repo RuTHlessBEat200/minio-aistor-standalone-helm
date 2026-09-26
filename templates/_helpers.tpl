@@ -85,6 +85,22 @@ Return the proper MinIO image name
 {{- end }}
 
 {{/*
+Return the proper mc (provisioning) image name
+*/}}
+{{- define "minio-aistor.mc.image" -}}
+{{- $registry := .Values.provisioning.image.registry -}}
+{{- if .Values.global.imageRegistry -}}
+  {{- $registry = .Values.global.imageRegistry -}}
+{{- end -}}
+{{- $repository := .Values.provisioning.image.repository -}}
+{{- $tag := .Values.provisioning.image.tag -}}
+{{- if .Values.global.imageTag -}}
+  {{- $tag = .Values.global.imageTag -}}
+{{- end -}}
+{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- end }}
+
+{{/*
 Return the MinIO root user
 */}}
 {{- define "minio-aistor.rootUser" -}}

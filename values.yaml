@@ -172,6 +172,14 @@ ingress:
     #     - s3.example.com
     #     - s3-console.example.com
 
+# Provisioning job configuration (creates users/buckets after MinIO starts)
+provisioning:
+  image:
+    registry: "quay.io"
+    repository: minio/aistor/mc
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
 # Users / Access Keys provisioning
 # These are created after MinIO starts via a post-install/upgrade Job
 users: []

@@ -49,8 +49,8 @@ spec:
         {{- end }}
       containers:
         - name: provisioning
-          image: quay.io/minio/mc:latest
-          imagePullPolicy: IfNotPresent
+          image: {{ include "minio-aistor.mc.image" . }}
+          imagePullPolicy: {{ .Values.provisioning.image.pullPolicy }}
           command: ["/bin/sh", "/scripts/provision.sh"]
           securityContext:
             allowPrivilegeEscalation: false
